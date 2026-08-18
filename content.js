@@ -3,6 +3,29 @@
   window.__STUDDER_CONTENT_LOADED__ = true;
 
   const OVERLAY_ID = "studder-overlay-root";
+  const CUSTOM_FIELD_MAPPINGS_KEY = "studder_custom_field_mappings";
+
+  const PROFILE_FIELD_OPTIONS = [
+    { key: "firstName", label: "First name" },
+    { key: "lastName", label: "Last name" },
+    { key: "fullName", label: "Full name" },
+    { key: "gender", label: "Gender" },
+    { key: "email", label: "Email" },
+    { key: "alternateEmail", label: "Alternate email" },
+    { key: "phone", label: "Phone" },
+    { key: "alternatePhone", label: "Alternate phone" },
+    { key: "dateOfBirth", label: "Date of birth" },
+    { key: "doorNumber", label: "Door / house number" },
+    { key: "area", label: "Area / street" },
+    { key: "landmark", label: "Landmark" },
+    { key: "city", label: "City" },
+    { key: "state", label: "State" },
+    { key: "country", label: "Country" },
+    { key: "zip", label: "ZIP / PIN" },
+    { key: "address", label: "Full address" },
+  ];
+
+  let customFieldMappings = [];
 
   const AUTOCOMPLETE_MAP = {
     "given-name": "firstName",
@@ -103,6 +126,25 @@
     return (str || "").toString().toLowerCase().trim();
   }
 
+  function normalizeForMatch(str) {
+    return normalize(str).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function loadCustomFieldMappings(callback) {
+    chrome.storage.local.get([CUSTOM_FIELD_MAPPINGS_KEY], (result) => {
+      const mappings = result[CUSTOM_FIELD_MAPPINGS_KEY];
+      customFieldMappings = Array.isArray(mappings) ? mappings : [];
+      callback(customFieldMappings);
+    });
+  }
+
+  function saveCustomFieldMappings(mappings, callback) {
+    chrome.storage.local.set({ [CUSTOM_FIELD_MAPPINGS_KEY]: mappings }, () => {
+      customFieldMappings = mappings;
+      if (callback) callback();
+    });
+  }
+
   function getAssociatedLabelText(el) {
     if (el.id) {
       const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
@@ -157,6 +199,37 @@
     return result;
   }
 
+  function uniqueUnfilledEntries(entries) {
+    const seen = new Set();
+    const result = [];
+    for (const entry of entries) {
+      if (!entry || !entry.displayName) continue;
+      const key = normalize(entry.displayName);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(entry);
+    }
+    return result;
+  }
+
+  function getProfileFieldOptionsHtml() {
+    const options = PROFILE_FIELD_OPTIONS.map((opt) => `<option value="${opt.key}">${escapeHtml(opt.label)}</option>`).join("");
+    return `<option value="">Choose field...</option>${options}`;
+  }
+
+  function getMappingPatternForEntry(entry) {
+    if (!entry || !entry.el) return "";
+    const pieces = [
+      entry.displayName,
+      entry.el.name,
+      entry.el.id,
+      entry.el.getAttribute("placeholder"),
+    ].filter(Boolean);
+
+    const best = pieces[0] || "";
+    return normalizeForMatch(best);
+  }
+
   function areValuesEquivalent(a, b) {
     const left = normalize((a || "").toString().replace(/\s+/g, " "));
     const right = normalize((b || "").toString().replace(/\s+/g, " "));
@@ -208,19 +281,54 @@
     return !((el.value || "").toString().trim());
   }
 
+  function resetFillableFields() {
+    const fields = Array.from(document.querySelectorAll("input, textarea, select"));
+
+    for (const el of fields) {
+      if (!isFillableElement(el)) continue;
+
+      if (el.type === "radio" || el.type === "checkbox") {
+        if (el.checked) {
+          el.checked = false;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        continue;
+      }
+
+      if (el.tagName === "SELECT") {
+        if (el.selectedIndex !== 0) {
+          el.selectedIndex = 0;
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        continue;
+      }
+
+      if (el.value) {
+        setNativeValue(el, "");
+      }
+    }
+  }
+
   function buildSignature(el) {
     const parts = [el.name, el.id, el.getAttribute("placeholder"), getAssociatedLabelText(el)];
     return normalize(parts.join(" "));
   }
 
   function detectFieldType(el) {
+    const signature = buildSignature(el);
     const autocomplete = normalize(el.getAttribute("autocomplete")).split(" ").pop();
     if (autocomplete && AUTOCOMPLETE_MAP[autocomplete]) {
       return AUTOCOMPLETE_MAP[autocomplete];
     }
 
     const type = normalize(el.type);
-    const signature = buildSignature(el);
+    const normalizedSignature = normalizeForMatch(signature);
+
+    const customMatch = customFieldMappings.find(
+      (mapping) => mapping && mapping.pattern && mapping.fieldKey && normalizedSignature.includes(mapping.pattern)
+    );
+    if (customMatch) return customMatch.fieldKey;
 
     for (const rule of KEYWORD_RULES) {
       if (rule.patterns.some((p) => signature.includes(p))) {
@@ -515,8 +623,15 @@
   function applyProfileWithConflictResolution(detectedFields, profile, callback) {
     let filledCount = 0;
     const handledRadioGroups = new Set();
-    const unfilledNames = [];
+    const unfilledEntries = [];
     const conflicts = [];
+
+    function pushUnfilledEntry(el, displayName, fieldKey) {
+      unfilledEntries.push({
+        el,
+        displayName: displayName || fieldKey || "unknown field",
+      });
+    }
 
     function runFill(fillStep) {
       const { el, fieldKey, displayName, value } = fillStep;
@@ -526,7 +641,7 @@
         if (matched) {
           filledCount++;
         } else if (isElementEmpty(el)) {
-          unfilledNames.push(displayName || fieldKey);
+          pushUnfilledEntry(el, displayName, fieldKey);
         }
         return;
       }
@@ -535,7 +650,7 @@
         if (fillSelect(el, value)) {
           filledCount++;
         } else if (isElementEmpty(el)) {
-          unfilledNames.push(displayName || fieldKey);
+          pushUnfilledEntry(el, displayName, fieldKey);
         }
         return;
       }
@@ -547,7 +662,7 @@
     for (const { el, fieldKey, displayName } of detectedFields) {
       const value = resolveValue(fieldKey, profile, el);
       if (value === undefined || value === null || value === "") {
-        if (isElementEmpty(el)) unfilledNames.push(displayName || fieldKey);
+        if (isElementEmpty(el)) pushUnfilledEntry(el, displayName, fieldKey);
         continue;
       }
 
@@ -592,7 +707,7 @@
       callback({
         cancelled: false,
         filledCount,
-        unfilledNames: uniqueNames(unfilledNames),
+        unfilledEntries: uniqueUnfilledEntries(unfilledEntries),
       });
     }
 
@@ -614,7 +729,7 @@
         callback({
           cancelled: true,
           filledCount,
-          unfilledNames: uniqueNames(unfilledNames),
+          unfilledEntries: uniqueUnfilledEntries(unfilledEntries),
         });
       }
     );
@@ -650,11 +765,22 @@
     });
   }
 
-  function showUnfilledReport(filledCount, unfilledNames) {
+  function showUnfilledReport(filledCount, unfilledEntries, profile) {
     removeOverlay();
 
-    const uniqueUnfilled = uniqueNames(unfilledNames);
-    const listItems = uniqueUnfilled.map((name) => `<li>${escapeHtml(name)}</li>`).join("");
+    const uniqueUnfilled = uniqueUnfilledEntries(unfilledEntries);
+    const listItems = uniqueUnfilled
+      .map((entry, index) => {
+        return `
+          <li class="studder-unfilled-item">
+            <span class="studder-unfilled-name">${escapeHtml(entry.displayName)}</span>
+            <select class="studder-unfilled-map-select" data-entry-index="${index}">
+              ${getProfileFieldOptionsHtml()}
+            </select>
+          </li>
+        `;
+      })
+      .join("");
 
     const root = document.createElement("div");
     root.id = OVERLAY_ID;
@@ -665,11 +791,74 @@
         <p class="studder-message">Filled: ${filledCount}</p>
         <p class="studder-message">Unfilled: ${uniqueUnfilled.length}</p>
         <ul class="studder-unfilled-list">${listItems}</ul>
+        <button type="button" class="studder-btn" data-action="apply-mappings">Save Mapping And Fill Selected</button>
+        <button type="button" class="studder-btn" data-action="reset-form">Reset Form</button>
         <button type="button" class="studder-btn studder-btn-secondary" data-action="close">Close</button>
       </div>
     `;
 
     document.documentElement.appendChild(root);
+
+    root.querySelector('[data-action="apply-mappings"]').addEventListener("click", () => {
+      const selections = Array.from(root.querySelectorAll(".studder-unfilled-map-select"));
+      const updates = [];
+      let filledNow = 0;
+
+      for (const select of selections) {
+        const index = Number(select.getAttribute("data-entry-index"));
+        const fieldKey = select.value;
+        if (!fieldKey) continue;
+
+        const entry = uniqueUnfilled[index];
+        if (!entry || !entry.el) continue;
+
+        const pattern = getMappingPatternForEntry(entry);
+        if (pattern) updates.push({ pattern, fieldKey });
+
+        const value = resolveValue(fieldKey, profile, entry.el);
+        if (value === undefined || value === null || value === "") continue;
+
+        if (entry.el.tagName === "SELECT") {
+          if (fillSelect(entry.el, value)) filledNow++;
+        } else if (entry.el.type === "radio") {
+          if (fillRadio(entry.el, value)) filledNow++;
+        } else {
+          setNativeValue(entry.el, value);
+          filledNow++;
+        }
+      }
+
+      if (updates.length === 0) {
+        showMessage("No mapping selected.");
+        return;
+      }
+
+      const merged = [...customFieldMappings];
+      updates.forEach((update) => {
+        const existingIndex = merged.findIndex((m) => m.pattern === update.pattern);
+        if (existingIndex >= 0) {
+          merged[existingIndex] = update;
+        } else {
+          merged.push(update);
+        }
+      });
+
+      saveCustomFieldMappings(merged, () => {
+        const remaining = uniqueUnfilledEntries(uniqueUnfilled.filter((entry) => isElementEmpty(entry.el)));
+        removeOverlay();
+        if (remaining.length > 0) {
+          showUnfilledReport(filledCount + filledNow, remaining, profile);
+        } else {
+          showMessage(`Mappings saved. Filled ${filledNow} additional field(s).`);
+        }
+      });
+    });
+
+    root.querySelector('[data-action="reset-form"]').addEventListener("click", () => {
+      resetFillableFields();
+      removeOverlay();
+      showMessage("Form has been reset.");
+    });
 
     root.querySelector('[data-action="close"]').addEventListener("click", removeOverlay);
     root.addEventListener("click", (e) => {
@@ -716,11 +905,11 @@
 
             const unmatchedUnfilled = unmatchedFields
               .filter(({ el }) => isElementEmpty(el))
-              .map(({ displayName }) => displayName);
-            const allUnfilled = uniqueNames([...result.unfilledNames, ...unmatchedUnfilled]);
+              .map(({ el, displayName }) => ({ el, displayName }));
+            const allUnfilled = uniqueUnfilledEntries([...result.unfilledEntries, ...unmatchedUnfilled]);
 
             if (allUnfilled.length > 0) {
-              showUnfilledReport(result.filledCount, allUnfilled);
+              showUnfilledReport(result.filledCount, allUnfilled, profile);
             } else if (result.filledCount === 0) {
               showMessage("No matching fields could be filled for this profile.");
             }
@@ -747,21 +936,23 @@
   }
 
   function runAutofillFlow() {
-    const scanned = scanFields();
-    const detectedFields = scanned.detected;
-    const unmatchedFields = scanned.unmatched;
+    loadCustomFieldMappings(() => {
+      const scanned = scanFields();
+      const detectedFields = scanned.detected;
+      const unmatchedFields = scanned.unmatched;
 
-    if (detectedFields.length === 0 && unmatchedFields.length === 0) {
-      showMessage("No fillable fields detected.");
-      return;
-    }
-
-    window.StudderStorage.getProfiles((profiles) => {
-      if (!profiles || profiles.length === 0) {
-        showMessage("No saved profiles yet. Open the extension popup to create one.");
+      if (detectedFields.length === 0 && unmatchedFields.length === 0) {
+        showMessage("No fillable fields detected.");
         return;
       }
-      showProfileSelector(profiles, detectedFields, unmatchedFields);
+
+      window.StudderStorage.getProfiles((profiles) => {
+        if (!profiles || profiles.length === 0) {
+          showMessage("No saved profiles yet. Open the extension popup to create one.");
+          return;
+        }
+        showProfileSelector(profiles, detectedFields, unmatchedFields);
+      });
     });
   }
 

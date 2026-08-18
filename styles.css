@@ -53,6 +53,26 @@
   margin-bottom: 4px;
 }
 
+.studder-unfilled-item {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.studder-unfilled-name {
+  font-size: 13px;
+}
+
+.studder-unfilled-map-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #999999;
+  background: #ffffff;
+  color: #111111;
+}
+
 .studder-profile-list {
   list-style: none;
   margin: 0 0 12px 0;
