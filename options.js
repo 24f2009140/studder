@@ -8,11 +8,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const dobDay = document.getElementById("dobDay");
   const dobMonth = document.getElementById("dobMonth");
   const dobYear = document.getElementById("dobYear");
+  const firstNameInput = document.getElementById("firstName");
+  const lastNameInput = document.getElementById("lastName");
+  const fullNameInput = document.getElementById("fullName");
 
   const FIELD_IDS = [
     "firstName",
     "lastName",
     "fullName",
+    "fullNameOrder",
     "gender",
     "email",
     "alternateEmail",
@@ -59,6 +63,37 @@ document.addEventListener("DOMContentLoaded", () => {
     dobMonth.value = parts[1] || "";
     dobYear.value = parts[2] || "";
   }
+
+  function getSelectedFullNameOrder() {
+    const selected = document.querySelector('input[name="fullNameOrder"]:checked');
+    return selected ? selected.value : "first_last";
+  }
+
+  function setSelectedFullNameOrder(order) {
+    const value = order === "last_first" ? "last_first" : "first_last";
+    const target = document.querySelector(`input[name="fullNameOrder"][value="${value}"]`);
+    if (target) target.checked = true;
+  }
+
+  function buildFullNameFromOrder() {
+    const first = firstNameInput.value.trim();
+    const last = lastNameInput.value.trim();
+    if (!first && !last) return "";
+    const order = getSelectedFullNameOrder();
+    return order === "last_first" ? [last, first].filter(Boolean).join(" ") : [first, last].filter(Boolean).join(" ");
+  }
+
+  function syncFullName() {
+    const generated = buildFullNameFromOrder();
+    if (!generated) return;
+    fullNameInput.value = generated;
+  }
+
+  firstNameInput.addEventListener("input", syncFullName);
+  lastNameInput.addEventListener("input", syncFullName);
+  document.querySelectorAll('input[name="fullNameOrder"]').forEach((radio) => {
+    radio.addEventListener("change", syncFullName);
+  });
 
   function renderProfiles(profiles) {
     listEl.innerHTML = "";
@@ -119,9 +154,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function loadIntoForm(profile) {
     idField.value = profile.id;
     FIELD_IDS.forEach((key) => {
+      if (key === "fullNameOrder") return;
       const el = document.getElementById(key);
       if (el) el.value = profile[key] || "";
     });
+    setSelectedFullNameOrder(profile.fullNameOrder || "first_last");
     dobToForm(profile.dateOfBirth);
     formTitle.textContent = `Edit profile: ${displayName(profile)}`;
     cancelEditBtn.style.display = "inline-block";
@@ -131,6 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetForm() {
     form.reset();
     idField.value = "";
+    setSelectedFullNameOrder("first_last");
     phoneCountrySelect.value = "+91";
     formTitle.textContent = "Add profile";
     cancelEditBtn.style.display = "none";
@@ -145,9 +183,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const data = {};
     FIELD_IDS.forEach((key) => {
+      if (key === "fullNameOrder") {
+        data[key] = getSelectedFullNameOrder();
+        return;
+      }
       const el = document.getElementById(key);
       data[key] = el ? el.value.trim() : "";
     });
+    if (!data.fullName) data.fullName = buildFullNameFromOrder();
     data.dateOfBirth = dobFromForm();
 
     if (!data.firstName || !data.lastName || !data.email) {

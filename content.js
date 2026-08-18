@@ -49,6 +49,14 @@
   };
 
   const KEYWORD_RULES = [
+    {
+      field: "sublocality",
+      patterns: ["sublocality", "sub locality", "sub-locality", "sub_locality"],
+    },
+    {
+      field: "localityField",
+      patterns: ["locality"],
+    },
     { field: "landmark", patterns: ["landmark", "near "] },
     {
       field: "doorNumber",
@@ -63,7 +71,7 @@
     {
       field: "area",
       patterns: [
-        "area", "locality", "street name", "streetname", "road name",
+        "area", "street name", "streetname", "road name",
         "address2", "address-line2", "addressline2", "address line 2",
       ],
     },
@@ -143,6 +151,20 @@
       customFieldMappings = mappings;
       if (callback) callback();
     });
+  }
+
+  function findCustomMapping(signature) {
+    if (!signature) return null;
+    const normalized = normalizeForMatch(signature);
+    const candidates = customFieldMappings.filter(
+      (mapping) => mapping && mapping.pattern && normalized.includes(mapping.pattern)
+    );
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => b.pattern.length - a.pattern.length);
+    const best = candidates[0];
+    if (!best.mode) return { mode: "map", fieldKey: best.fieldKey, pattern: best.pattern };
+    return best;
   }
 
   function getAssociatedLabelText(el) {
@@ -316,19 +338,13 @@
   }
 
   function detectFieldType(el) {
-    const signature = buildSignature(el);
     const autocomplete = normalize(el.getAttribute("autocomplete")).split(" ").pop();
     if (autocomplete && AUTOCOMPLETE_MAP[autocomplete]) {
       return AUTOCOMPLETE_MAP[autocomplete];
     }
 
     const type = normalize(el.type);
-    const normalizedSignature = normalizeForMatch(signature);
-
-    const customMatch = customFieldMappings.find(
-      (mapping) => mapping && mapping.pattern && mapping.fieldKey && normalizedSignature.includes(mapping.pattern)
-    );
-    if (customMatch) return customMatch.fieldKey;
+    const signature = buildSignature(el);
 
     for (const rule of KEYWORD_RULES) {
       if (rule.patterns.some((p) => signature.includes(p))) {
@@ -364,7 +380,20 @@
     const unmatched = [];
     for (const el of candidates) {
       if (!isFillableElement(el)) continue;
-      const fieldKey = detectFieldType(el);
+      const signature = buildSignature(el);
+      const custom = findCustomMapping(signature);
+
+      if (custom && custom.mode === "value") {
+        detected.push({
+          el,
+          fieldKey: "customValue",
+          customValue: custom.value || "",
+          displayName: getFieldDisplayName(el, "custom value"),
+        });
+        continue;
+      }
+
+      const fieldKey = custom && custom.fieldKey ? custom.fieldKey : detectFieldType(el);
       if (fieldKey) {
         detected.push({ el, fieldKey, displayName: getFieldDisplayName(el, fieldKey) });
       } else {
@@ -494,6 +523,17 @@
     return code ? `${code} ${phone}`.trim() : phone;
   }
 
+  function getResolvedFullName(profile) {
+    if (profile.fullName) return profile.fullName;
+    const first = (profile.firstName || "").trim();
+    const last = (profile.lastName || "").trim();
+    if (!first && !last) return "";
+    if ((profile.fullNameOrder || "").toLowerCase() === "last_first") {
+      return [last, first].filter(Boolean).join(" ");
+    }
+    return [first, last].filter(Boolean).join(" ");
+  }
+
   function normalizeGender(value) {
     const g = normalize(value);
     if (g.startsWith("m")) return "male";
@@ -531,10 +571,21 @@
     return true;
   }
 
-  function resolveValue(fieldKey, profile, el) {
+  function resolveValue(fieldKey, profile, el, context) {
+    if (fieldKey === "customValue") {
+      return context && typeof context.customValue === "string" ? context.customValue : "";
+    }
+
     switch (fieldKey) {
+      case "fullName":
+        return getResolvedFullName(profile);
       case "address":
         return buildFullAddress(profile) || profile.address || "";
+      case "sublocality":
+        return profile.area || "";
+      case "localityField":
+        if (context && context.hasSublocalityField) return profile.landmark || "";
+        return profile.area || profile.landmark || "";
       case "phone":
         return getCombinedPhone(profile) || profile.phone || "";
       case "phoneCountry":
@@ -625,11 +676,13 @@
     const handledRadioGroups = new Set();
     const unfilledEntries = [];
     const conflicts = [];
+    const hasSublocalityField = detectedFields.some((f) => f.fieldKey === "sublocality");
 
     function pushUnfilledEntry(el, displayName, fieldKey) {
       unfilledEntries.push({
         el,
         displayName: displayName || fieldKey || "unknown field",
+        fieldKey: fieldKey || null,
       });
     }
 
@@ -659,8 +712,8 @@
       filledCount++;
     }
 
-    for (const { el, fieldKey, displayName } of detectedFields) {
-      const value = resolveValue(fieldKey, profile, el);
+    for (const { el, fieldKey, displayName, customValue } of detectedFields) {
+      const value = resolveValue(fieldKey, profile, el, { hasSublocalityField, customValue });
       if (value === undefined || value === null || value === "") {
         if (isElementEmpty(el)) pushUnfilledEntry(el, displayName, fieldKey);
         continue;
@@ -769,14 +822,20 @@
     removeOverlay();
 
     const uniqueUnfilled = uniqueUnfilledEntries(unfilledEntries);
+    const hasSublocalityField = uniqueUnfilled.some((entry) => entry.fieldKey === "sublocality");
     const listItems = uniqueUnfilled
       .map((entry, index) => {
         return `
           <li class="studder-unfilled-item">
             <span class="studder-unfilled-name">${escapeHtml(entry.displayName)}</span>
-            <select class="studder-unfilled-map-select" data-entry-index="${index}">
+            <div class="studder-unfilled-actions">
+              <button type="button" class="studder-btn studder-btn-small" data-action="choose-map" data-entry-index="${index}">Map Existing</button>
+              <button type="button" class="studder-btn studder-btn-small" data-action="choose-add" data-entry-index="${index}">Add New Value</button>
+            </div>
+            <select class="studder-unfilled-map-select" data-entry-index="${index}" style="display:none;">
               ${getProfileFieldOptionsHtml()}
             </select>
+            <input class="studder-unfilled-value-input" type="text" data-entry-index="${index}" placeholder="Type value to save" style="display:none;" />
           </li>
         `;
       })
@@ -791,7 +850,7 @@
         <p class="studder-message">Filled: ${filledCount}</p>
         <p class="studder-message">Unfilled: ${uniqueUnfilled.length}</p>
         <ul class="studder-unfilled-list">${listItems}</ul>
-        <button type="button" class="studder-btn" data-action="apply-mappings">Save Mapping And Fill Selected</button>
+        <button type="button" class="studder-btn" data-action="apply-unfilled-actions">Save Choices And Fill Selected</button>
         <button type="button" class="studder-btn" data-action="reset-form">Reset Form</button>
         <button type="button" class="studder-btn studder-btn-secondary" data-action="close">Close</button>
       </div>
@@ -799,12 +858,34 @@
 
     document.documentElement.appendChild(root);
 
-    root.querySelector('[data-action="apply-mappings"]').addEventListener("click", () => {
-      const selections = Array.from(root.querySelectorAll(".studder-unfilled-map-select"));
+    root.querySelectorAll('[data-action="choose-map"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const index = btn.getAttribute("data-entry-index");
+        const mapSelect = root.querySelector(`.studder-unfilled-map-select[data-entry-index="${index}"]`);
+        const valueInput = root.querySelector(`.studder-unfilled-value-input[data-entry-index="${index}"]`);
+        if (mapSelect) mapSelect.style.display = "block";
+        if (valueInput) valueInput.style.display = "none";
+      });
+    });
+
+    root.querySelectorAll('[data-action="choose-add"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const index = btn.getAttribute("data-entry-index");
+        const mapSelect = root.querySelector(`.studder-unfilled-map-select[data-entry-index="${index}"]`);
+        const valueInput = root.querySelector(`.studder-unfilled-value-input[data-entry-index="${index}"]`);
+        if (mapSelect) mapSelect.style.display = "none";
+        if (valueInput) valueInput.style.display = "block";
+      });
+    });
+
+    root.querySelector('[data-action="apply-unfilled-actions"]').addEventListener("click", () => {
+      const mapSelections = Array.from(root.querySelectorAll(".studder-unfilled-map-select"));
+      const addSelections = Array.from(root.querySelectorAll(".studder-unfilled-value-input"));
       const updates = [];
       let filledNow = 0;
 
-      for (const select of selections) {
+      for (const select of mapSelections) {
+        if (select.style.display === "none") continue;
         const index = Number(select.getAttribute("data-entry-index"));
         const fieldKey = select.value;
         if (!fieldKey) continue;
@@ -813,9 +894,12 @@
         if (!entry || !entry.el) continue;
 
         const pattern = getMappingPatternForEntry(entry);
-        if (pattern) updates.push({ pattern, fieldKey });
+        if (pattern) updates.push({ pattern, mode: "map", fieldKey });
 
-        const value = resolveValue(fieldKey, profile, entry.el);
+        const value = resolveValue(fieldKey, profile, entry.el, {
+          hasSublocalityField,
+          customValue: "",
+        });
         if (value === undefined || value === null || value === "") continue;
 
         if (entry.el.tagName === "SELECT") {
@@ -828,8 +912,30 @@
         }
       }
 
+      for (const input of addSelections) {
+        if (input.style.display === "none") continue;
+        const index = Number(input.getAttribute("data-entry-index"));
+        const rawValue = (input.value || "").trim();
+        if (!rawValue) continue;
+
+        const entry = uniqueUnfilled[index];
+        if (!entry || !entry.el) continue;
+
+        const pattern = getMappingPatternForEntry(entry);
+        if (pattern) updates.push({ pattern, mode: "value", value: rawValue });
+
+        if (entry.el.tagName === "SELECT") {
+          if (fillSelect(entry.el, rawValue)) filledNow++;
+        } else if (entry.el.type === "radio") {
+          if (fillRadio(entry.el, rawValue)) filledNow++;
+        } else {
+          setNativeValue(entry.el, rawValue);
+          filledNow++;
+        }
+      }
+
       if (updates.length === 0) {
-        showMessage("No mapping selected.");
+        showMessage("No action selected.");
         return;
       }
 
@@ -837,7 +943,7 @@
       updates.forEach((update) => {
         const existingIndex = merged.findIndex((m) => m.pattern === update.pattern);
         if (existingIndex >= 0) {
-          merged[existingIndex] = update;
+          merged[existingIndex] = Object.assign({}, merged[existingIndex], update);
         } else {
           merged.push(update);
         }
@@ -866,7 +972,7 @@
     });
   }
 
-  function showProfileSelector(profiles, detectedFields, unmatchedFields) {
+  function showProfileSelector(profiles, detectedFields, unmatchedFields, totalSlots) {
     removeOverlay();
 
     const root = document.createElement("div");
@@ -903,9 +1009,13 @@
               return;
             }
 
+            if (window.StudderStorage && typeof window.StudderStorage.recordFillStats === "function") {
+              window.StudderStorage.recordFillStats(result.filledCount, totalSlots || 0);
+            }
+
             const unmatchedUnfilled = unmatchedFields
               .filter(({ el }) => isElementEmpty(el))
-              .map(({ el, displayName }) => ({ el, displayName }));
+              .map(({ el, displayName }) => ({ el, displayName, fieldKey: null }));
             const allUnfilled = uniqueUnfilledEntries([...result.unfilledEntries, ...unmatchedUnfilled]);
 
             if (allUnfilled.length > 0) {
@@ -940,6 +1050,7 @@
       const scanned = scanFields();
       const detectedFields = scanned.detected;
       const unmatchedFields = scanned.unmatched;
+      const totalSlots = detectedFields.length + unmatchedFields.length;
 
       if (detectedFields.length === 0 && unmatchedFields.length === 0) {
         showMessage("No fillable fields detected.");
@@ -951,7 +1062,7 @@
           showMessage("No saved profiles yet. Open the extension popup to create one.");
           return;
         }
-        showProfileSelector(profiles, detectedFields, unmatchedFields);
+        showProfileSelector(profiles, detectedFields, unmatchedFields, totalSlots);
       });
     });
   }

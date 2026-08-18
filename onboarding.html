@@ -34,6 +34,17 @@
           <div class="ui-form-row">
             <label class="ui-label" for="fullName">Full name</label>
             <input class="ui-input" type="text" id="fullName" name="fullName" />
+            <p class="ui-hint">Choose preferred full-name order:</p>
+            <div class="ui-choice-group">
+              <label class="ui-choice-item" for="fullNameOrderFirstLast">
+                <input type="radio" id="fullNameOrderFirstLast" name="fullNameOrder" value="first_last" checked />
+                First name + Last name
+              </label>
+              <label class="ui-choice-item" for="fullNameOrderLastFirst">
+                <input type="radio" id="fullNameOrderLastFirst" name="fullNameOrder" value="last_first" />
+                Last name + First name
+              </label>
+            </div>
           </div>
 
           <div class="ui-form-row">

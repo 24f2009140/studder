@@ -1,5 +1,6 @@
 (function (root) {
   const STORAGE_KEY = "studder_profiles";
+  const FILL_STATS_KEY = "studder_fill_stats";
 
   const DIAL_CODES = [
     { code: "+1", label: "United States / Canada (+1)" },
@@ -82,13 +83,47 @@
     });
   }
 
+  function getFillStats(callback) {
+    chrome.storage.local.get([FILL_STATS_KEY], (result) => {
+      const stats = result[FILL_STATS_KEY] || {};
+      callback({
+        filled: Number.isFinite(stats.filled) ? stats.filled : 0,
+        total: Number.isFinite(stats.total) ? stats.total : 0,
+      });
+    });
+  }
+
+  function saveFillStats(stats, callback) {
+    const safeStats = {
+      filled: Math.max(0, Number.isFinite(stats.filled) ? stats.filled : 0),
+      total: Math.max(0, Number.isFinite(stats.total) ? stats.total : 0),
+    };
+    chrome.storage.local.set({ [FILL_STATS_KEY]: safeStats }, () => {
+      if (callback) callback(safeStats);
+    });
+  }
+
+  function recordFillStats(filledDelta, totalDelta, callback) {
+    getFillStats((existing) => {
+      const next = {
+        filled: existing.filled + Math.max(0, Number.isFinite(filledDelta) ? filledDelta : 0),
+        total: existing.total + Math.max(0, Number.isFinite(totalDelta) ? totalDelta : 0),
+      };
+      saveFillStats(next, callback);
+    });
+  }
+
   root.StudderStorage = {
     STORAGE_KEY,
+    FILL_STATS_KEY,
     DIAL_CODES,
     getProfiles,
     saveProfiles,
     addProfile,
     updateProfile,
     deleteProfile,
+    getFillStats,
+    saveFillStats,
+    recordFillStats,
   };
 })(typeof window !== "undefined" ? window : self);
