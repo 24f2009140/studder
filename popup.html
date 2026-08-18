@@ -13,10 +13,24 @@
 
     <main>
       <p id="profile-count" class="ui-muted">Loading profiles...</p>
-      <p id="fill-stats" class="ui-muted">Autofill usage: 0%</p>
+      
+      <div id="fill-stats-container" style="text-align: center; margin: 12px 0;">
+        <div class="studder-circular-progress" id="progress-circle" style="--percent: 0">
+          <svg class="studder-progress-svg" viewBox="0 0 100 100">
+            <circle class="studder-progress-bg" cx="50" cy="50" r="40"></circle>
+            <circle class="studder-progress-bar" cx="50" cy="50" r="40"></circle>
+          </svg>
+          <span class="studder-progress-text" id="progress-text">0%</span>
+        </div>
+        <p id="fill-stats-label" class="ui-muted" style="margin: 4px 0 0 0; font-size: 11px;">0/0 fields filled</p>
+      </div>
 
       <button id="fill-btn" type="button" class="ui-btn ui-btn-primary">
         Fill current page (Ctrl+Shift+F)
+      </button>
+
+      <button id="reset-btn" type="button" class="ui-btn ui-btn-danger">
+        Reset Form
       </button>
 
       <ul id="profile-list" class="ui-list"></ul>

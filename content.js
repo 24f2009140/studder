@@ -7,6 +7,7 @@
 
   const PROFILE_FIELD_OPTIONS = [
     { key: "firstName", label: "First name" },
+    { key: "middleName", label: "Middle name" },
     { key: "lastName", label: "Last name" },
     { key: "fullName", label: "Full name" },
     { key: "gender", label: "Gender" },
@@ -98,6 +99,7 @@
     },
     { field: "gender", patterns: ["gender", "sex"] },
     { field: "firstName", patterns: ["fname", "first_name", "first-name", "firstname", "givenname", "given-name"] },
+    { field: "middleName", patterns: ["mname", "middle_name", "middle-name", "middlename", "middle name"] },
     { field: "lastName", patterns: ["lname", "last_name", "last-name", "lastname", "familyname", "family-name", "surname"] },
     { field: "email", patterns: ["email", "e-mail"] },
     { field: "phone", patterns: ["phone", "telephone", "mobile", "cell", "contact-number", "contactnumber"] },
@@ -338,6 +340,16 @@
   }
 
   function detectFieldType(el) {
+    const nameAttr = normalize(el.name);
+    const idAttr = normalize(el.id);
+    const labelText = normalize(getAssociatedLabelText(el));
+    const placeholderText = normalize(el.getAttribute("placeholder"));
+    
+    if (nameAttr === "name" || idAttr === "name" || labelText === "name" || placeholderText === "name" ||
+        nameAttr === "fullname" || idAttr === "fullname" || labelText === "fullname" || placeholderText === "fullname") {
+      return "fullName";
+    }
+
     const autocomplete = normalize(el.getAttribute("autocomplete")).split(" ").pop();
     if (autocomplete && AUTOCOMPLETE_MAP[autocomplete]) {
       return AUTOCOMPLETE_MAP[autocomplete];
@@ -366,11 +378,52 @@
     return null;
   }
 
+  function isSecurityOrPasswordElement(el) {
+    if (el.type === "password") return true;
+    const signature = buildSignature(el);
+    const securityKeywords = [
+      "password", "confirm password", "confirm-password", "confirmpassword",
+      "passwd", "passphrase", "pass", "pwd", "captcha", "recaptcha", 
+      "otp", "one-time-password", "one time password", "verification code", 
+      "verification-code", "verificationcode", "security code", "securitycode", 
+      "security-code", "cvv", "cvc", "card number", "cardnumber", "card-number",
+      "ccnum", "credit card", "creditcard", "credit-card"
+    ];
+    return securityKeywords.some((kw) => signature.includes(kw));
+  }
+
+  function isTermsOrNewsletterCheckbox(el) {
+    if (el.type !== "checkbox") return false;
+    const signature = buildSignature(el);
+    const keywords = [
+      "agree", "terms", "condition", "policy", "accept", "consent",
+      "subscribe", "newsletter", "privacy", "rules", "t&c", "tcs", "tca",
+      "i read", "i have read", "read the", "read and", "understand and"
+    ];
+    return keywords.some((kw) => signature.includes(kw));
+  }
+
   function isFillableElement(el) {
     if (el.disabled || el.readOnly) return false;
     if (el.type === "hidden" || el.type === "submit" || el.type === "button" || el.type === "reset") return false;
+    
+    // Ignore security and password elements
+    if (isSecurityOrPasswordElement(el)) return false;
+
+    // Ignore terms and conditions / newsletter checkboxes
+    if (el.type === "checkbox" && isTermsOrNewsletterCheckbox(el)) return false;
+
     const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0" ||
+      el.offsetWidth === 0 ||
+      el.offsetHeight === 0
+    ) {
+      return false;
+    }
+    
     return true;
   }
 
@@ -400,6 +453,14 @@
         unmatched.push({ el, displayName: getFieldDisplayName(el) });
       }
     }
+
+    const addressFields = detected.filter(
+      (f) => ["address", "doorNumber", "area", "sublocality", "localityField"].includes(f.fieldKey)
+    );
+    if (addressFields.length === 1) {
+      addressFields[0].fieldKey = "address";
+    }
+
     return { detected, unmatched };
   }
 
@@ -526,12 +587,13 @@
   function getResolvedFullName(profile) {
     if (profile.fullName) return profile.fullName;
     const first = (profile.firstName || "").trim();
+    const middle = (profile.middleName || "").trim();
     const last = (profile.lastName || "").trim();
-    if (!first && !last) return "";
+    if (!first && !middle && !last) return "";
     if ((profile.fullNameOrder || "").toLowerCase() === "last_first") {
-      return [last, first].filter(Boolean).join(" ");
+      return [last, first, middle].filter(Boolean).join(" ");
     }
-    return [first, last].filter(Boolean).join(" ");
+    return [first, middle, last].filter(Boolean).join(" ");
   }
 
   function normalizeGender(value) {
@@ -587,12 +649,18 @@
         if (context && context.hasSublocalityField) return profile.landmark || "";
         return profile.area || profile.landmark || "";
       case "phone":
+        if (el && (el.maxLength === 10 || el.getAttribute("maxlength") === "10")) {
+          return (profile.phone || "").trim();
+        }
         return getCombinedPhone(profile) || profile.phone || "";
       case "phoneCountry":
         return "";
       case "alternateEmail":
         return profile.alternateEmail || profile.email || "";
       case "alternatePhone":
+        if (el && (el.maxLength === 10 || el.getAttribute("maxlength") === "10")) {
+          return (profile.alternatePhone || "").trim();
+        }
         return profile.alternatePhone || profile.phone || "";
       case "dateOfBirth":
         return resolveDob(profile, el);
@@ -822,24 +890,18 @@
     removeOverlay();
 
     const uniqueUnfilled = uniqueUnfilledEntries(unfilledEntries);
-    const hasSublocalityField = uniqueUnfilled.some((entry) => entry.fieldKey === "sublocality");
     const listItems = uniqueUnfilled
-      .map((entry, index) => {
+      .map((entry) => {
         return `
-          <li class="studder-unfilled-item">
+          <li class="studder-unfilled-item" style="margin-bottom: 6px;">
             <span class="studder-unfilled-name">${escapeHtml(entry.displayName)}</span>
-            <div class="studder-unfilled-actions">
-              <button type="button" class="studder-btn studder-btn-small" data-action="choose-map" data-entry-index="${index}">Map Existing</button>
-              <button type="button" class="studder-btn studder-btn-small" data-action="choose-add" data-entry-index="${index}">Add New Value</button>
-            </div>
-            <select class="studder-unfilled-map-select" data-entry-index="${index}" style="display:none;">
-              ${getProfileFieldOptionsHtml()}
-            </select>
-            <input class="studder-unfilled-value-input" type="text" data-entry-index="${index}" placeholder="Type value to save" style="display:none;" />
           </li>
         `;
       })
       .join("");
+
+    const total = filledCount + uniqueUnfilled.length;
+    const percent = total > 0 ? Math.round((filledCount / total) * 100) : 0;
 
     const root = document.createElement("div");
     root.id = OVERLAY_ID;
@@ -847,124 +909,27 @@
     root.innerHTML = `
       <div class="studder-panel">
         <p class="studder-title">Autofill Report</p>
-        <p class="studder-message">Filled: ${filledCount}</p>
-        <p class="studder-message">Unfilled: ${uniqueUnfilled.length}</p>
-        <ul class="studder-unfilled-list">${listItems}</ul>
-        <button type="button" class="studder-btn" data-action="apply-unfilled-actions">Save Choices And Fill Selected</button>
-        <button type="button" class="studder-btn" data-action="reset-form">Reset Form</button>
+        
+        <div class="studder-circular-progress" style="--percent: ${percent}">
+          <svg class="studder-progress-svg" viewBox="0 0 100 100">
+            <circle class="studder-progress-bg" cx="50" cy="50" r="40"></circle>
+            <circle class="studder-progress-bar" cx="50" cy="50" r="40"></circle>
+          </svg>
+          <span class="studder-progress-text">${percent}%</span>
+        </div>
+
+        <p class="studder-message" style="text-align: center; margin-bottom: 12px;">
+          Filled: <strong>${filledCount}</strong> | Unfilled: <strong>${uniqueUnfilled.length}</strong>
+        </p>
+
+        <p class="studder-section-title" style="font-size: 13px; font-weight: 600; margin: 12px 0 6px 0;">Unfilled Fields</p>
+        <ul class="studder-unfilled-list" style="margin-left: 0; padding-left: 16px; list-style-type: disc;">${listItems}</ul>
+        
         <button type="button" class="studder-btn studder-btn-secondary" data-action="close">Close</button>
       </div>
     `;
 
     document.documentElement.appendChild(root);
-
-    root.querySelectorAll('[data-action="choose-map"]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const index = btn.getAttribute("data-entry-index");
-        const mapSelect = root.querySelector(`.studder-unfilled-map-select[data-entry-index="${index}"]`);
-        const valueInput = root.querySelector(`.studder-unfilled-value-input[data-entry-index="${index}"]`);
-        if (mapSelect) mapSelect.style.display = "block";
-        if (valueInput) valueInput.style.display = "none";
-      });
-    });
-
-    root.querySelectorAll('[data-action="choose-add"]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const index = btn.getAttribute("data-entry-index");
-        const mapSelect = root.querySelector(`.studder-unfilled-map-select[data-entry-index="${index}"]`);
-        const valueInput = root.querySelector(`.studder-unfilled-value-input[data-entry-index="${index}"]`);
-        if (mapSelect) mapSelect.style.display = "none";
-        if (valueInput) valueInput.style.display = "block";
-      });
-    });
-
-    root.querySelector('[data-action="apply-unfilled-actions"]').addEventListener("click", () => {
-      const mapSelections = Array.from(root.querySelectorAll(".studder-unfilled-map-select"));
-      const addSelections = Array.from(root.querySelectorAll(".studder-unfilled-value-input"));
-      const updates = [];
-      let filledNow = 0;
-
-      for (const select of mapSelections) {
-        if (select.style.display === "none") continue;
-        const index = Number(select.getAttribute("data-entry-index"));
-        const fieldKey = select.value;
-        if (!fieldKey) continue;
-
-        const entry = uniqueUnfilled[index];
-        if (!entry || !entry.el) continue;
-
-        const pattern = getMappingPatternForEntry(entry);
-        if (pattern) updates.push({ pattern, mode: "map", fieldKey });
-
-        const value = resolveValue(fieldKey, profile, entry.el, {
-          hasSublocalityField,
-          customValue: "",
-        });
-        if (value === undefined || value === null || value === "") continue;
-
-        if (entry.el.tagName === "SELECT") {
-          if (fillSelect(entry.el, value)) filledNow++;
-        } else if (entry.el.type === "radio") {
-          if (fillRadio(entry.el, value)) filledNow++;
-        } else {
-          setNativeValue(entry.el, value);
-          filledNow++;
-        }
-      }
-
-      for (const input of addSelections) {
-        if (input.style.display === "none") continue;
-        const index = Number(input.getAttribute("data-entry-index"));
-        const rawValue = (input.value || "").trim();
-        if (!rawValue) continue;
-
-        const entry = uniqueUnfilled[index];
-        if (!entry || !entry.el) continue;
-
-        const pattern = getMappingPatternForEntry(entry);
-        if (pattern) updates.push({ pattern, mode: "value", value: rawValue });
-
-        if (entry.el.tagName === "SELECT") {
-          if (fillSelect(entry.el, rawValue)) filledNow++;
-        } else if (entry.el.type === "radio") {
-          if (fillRadio(entry.el, rawValue)) filledNow++;
-        } else {
-          setNativeValue(entry.el, rawValue);
-          filledNow++;
-        }
-      }
-
-      if (updates.length === 0) {
-        showMessage("No action selected.");
-        return;
-      }
-
-      const merged = [...customFieldMappings];
-      updates.forEach((update) => {
-        const existingIndex = merged.findIndex((m) => m.pattern === update.pattern);
-        if (existingIndex >= 0) {
-          merged[existingIndex] = Object.assign({}, merged[existingIndex], update);
-        } else {
-          merged.push(update);
-        }
-      });
-
-      saveCustomFieldMappings(merged, () => {
-        const remaining = uniqueUnfilledEntries(uniqueUnfilled.filter((entry) => isElementEmpty(entry.el)));
-        removeOverlay();
-        if (remaining.length > 0) {
-          showUnfilledReport(filledCount + filledNow, remaining, profile);
-        } else {
-          showMessage(`Mappings saved. Filled ${filledNow} additional field(s).`);
-        }
-      });
-    });
-
-    root.querySelector('[data-action="reset-form"]').addEventListener("click", () => {
-      resetFillableFields();
-      removeOverlay();
-      showMessage("Form has been reset.");
-    });
 
     root.querySelector('[data-action="close"]').addEventListener("click", removeOverlay);
     root.addEventListener("click", (e) => {
@@ -983,7 +948,7 @@
       .map(
         (p) =>
           `<li><button type="button" class="studder-profile-btn" data-id="${p.id}">${escapeHtml(
-            p.fullName || [p.firstName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile"
+            p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile"
           )}</button></li>`
       )
       .join("");
@@ -1074,6 +1039,13 @@
       } catch (err) {
         console.error("Studder error:", err);
         showMessage("Something went wrong scanning this page.");
+      }
+    } else if (message && message.type === "TRIGGER_RESET") {
+      try {
+        resetFillableFields();
+        showMessage("Form has been reset.");
+      } catch (err) {
+        console.error("Studder error:", err);
       }
     }
   });

@@ -9,11 +9,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const dobMonth = document.getElementById("dobMonth");
   const dobYear = document.getElementById("dobYear");
   const firstNameInput = document.getElementById("firstName");
+  const middleNameInput = document.getElementById("middleName");
   const lastNameInput = document.getElementById("lastName");
   const fullNameInput = document.getElementById("fullName");
 
   const FIELD_IDS = [
     "firstName",
+    "middleName",
     "lastName",
     "fullName",
     "fullNameOrder",
@@ -60,10 +62,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildFullNameFromOrder() {
     const first = firstNameInput.value.trim();
+    const middle = middleNameInput ? middleNameInput.value.trim() : "";
     const last = lastNameInput.value.trim();
-    if (!first && !last) return "";
+    if (!first && !middle && !last) return "";
     const order = getSelectedFullNameOrder();
-    return order === "last_first" ? [last, first].filter(Boolean).join(" ") : [first, last].filter(Boolean).join(" ");
+    return order === "last_first" ? [last, first, middle].filter(Boolean).join(" ") : [first, middle, last].filter(Boolean).join(" ");
   }
 
   function syncFullName() {
@@ -73,6 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   firstNameInput.addEventListener("input", syncFullName);
+  if (middleNameInput) middleNameInput.addEventListener("input", syncFullName);
   lastNameInput.addEventListener("input", syncFullName);
   document.querySelectorAll('input[name="fullNameOrder"]').forEach((radio) => {
     radio.addEventListener("change", syncFullName);
