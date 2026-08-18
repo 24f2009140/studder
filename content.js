@@ -157,6 +157,39 @@
     return result;
   }
 
+  function areValuesEquivalent(a, b) {
+    const left = normalize((a || "").toString().replace(/\s+/g, " "));
+    const right = normalize((b || "").toString().replace(/\s+/g, " "));
+    return left === right;
+  }
+
+  function getCurrentFieldValue(el) {
+    if (!el) return "";
+
+    if (el.type === "radio") {
+      if (!el.form || !el.name) return el.checked ? (el.value || "") : "";
+      const radios = Array.from(el.form.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`));
+      const checked = radios.find((radio) => radio.checked);
+      if (!checked) return "";
+      return checked.value || getAssociatedLabelText(checked) || "";
+    }
+
+    if (el.tagName === "SELECT") {
+      const option = el.options[el.selectedIndex];
+      if (!option) return "";
+      return option.textContent || option.value || "";
+    }
+
+    return (el.value || "").toString();
+  }
+
+  function previewValue(value) {
+    const text = (value || "").toString().trim();
+    if (!text) return "(empty)";
+    if (text.length <= 80) return text;
+    return `${text.slice(0, 77)}...`;
+  }
+
   function isElementEmpty(el) {
     if (!el) return true;
 
@@ -409,31 +442,93 @@
     }
   }
 
-  function applyProfile(detectedFields, profile) {
+  function showConflictResolver(conflicts, onResolve, onCancel) {
+    removeOverlay();
+
+    const rows = conflicts
+      .map((conflict, index) => {
+        return `
+          <li class="studder-conflict-item">
+            <p class="studder-conflict-name">${escapeHtml(conflict.displayName)}</p>
+            <div class="studder-conflict-compare">
+              <div class="studder-conflict-col">
+                <p class="studder-conflict-col-title">Current</p>
+                <p class="studder-conflict-value">${escapeHtml(previewValue(conflict.currentValue))}</p>
+                <label class="studder-choice-label">
+                  <input type="radio" name="studder_conflict_${index}" value="keep" checked />
+                  Keep current
+                </label>
+              </div>
+              <div class="studder-conflict-col">
+                <p class="studder-conflict-col-title">Autofill</p>
+                <p class="studder-conflict-value">${escapeHtml(previewValue(conflict.nextValue))}</p>
+                <label class="studder-choice-label">
+                  <input type="radio" name="studder_conflict_${index}" value="overwrite" />
+                  Use autofill
+                </label>
+              </div>
+            </div>
+          </li>
+        `;
+      })
+      .join("");
+
+    const root = document.createElement("div");
+    root.id = OVERLAY_ID;
+    root.className = "studder-overlay";
+    root.innerHTML = `
+      <div class="studder-panel studder-panel-wide">
+        <p class="studder-title">Resolve Field Conflicts</p>
+        <p class="studder-message">Some fields already had values. Choose what to keep for each one.</p>
+        <ul class="studder-conflict-list">${rows}</ul>
+        <div class="studder-actions-row">
+          <button type="button" class="studder-btn" data-action="cancel">Cancel</button>
+          <button type="button" class="studder-btn" data-action="continue">Continue</button>
+        </div>
+      </div>
+    `;
+
+    document.documentElement.appendChild(root);
+
+    root.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+      removeOverlay();
+      if (onCancel) onCancel();
+    });
+
+    root.querySelector('[data-action="continue"]').addEventListener("click", () => {
+      const decisions = conflicts.map((_, index) => {
+        const selected = root.querySelector(`input[name="studder_conflict_${index}"]:checked`);
+        return selected && selected.value === "overwrite" ? "overwrite" : "keep";
+      });
+      removeOverlay();
+      onResolve(decisions);
+    });
+
+    root.addEventListener("click", (e) => {
+      if (e.target === root) {
+        removeOverlay();
+        if (onCancel) onCancel();
+      }
+    });
+  }
+
+  function applyProfileWithConflictResolution(detectedFields, profile, callback) {
     let filledCount = 0;
     const handledRadioGroups = new Set();
     const unfilledNames = [];
+    const conflicts = [];
 
-    for (const { el, fieldKey, displayName } of detectedFields) {
-      const value = resolveValue(fieldKey, profile, el);
-      if (value === undefined || value === null || value === "") {
-        if (isElementEmpty(el)) unfilledNames.push(displayName || fieldKey);
-        continue;
-      }
-
-      if (el.type !== "radio" && el.value && el.value.trim() !== "") continue;
+    function runFill(fillStep) {
+      const { el, fieldKey, displayName, value } = fillStep;
 
       if (el.type === "radio") {
-        const groupKey = el.name || el.id;
-        if (groupKey && handledRadioGroups.has(groupKey)) continue;
         const matched = fieldKey === "gender" ? fillRadio(el, value) : false;
         if (matched) {
-          if (groupKey) handledRadioGroups.add(groupKey);
           filledCount++;
         } else if (isElementEmpty(el)) {
           unfilledNames.push(displayName || fieldKey);
         }
-        continue;
+        return;
       }
 
       if (el.tagName === "SELECT") {
@@ -442,16 +537,87 @@
         } else if (isElementEmpty(el)) {
           unfilledNames.push(displayName || fieldKey);
         }
-      } else {
-        setNativeValue(el, value);
-        filledCount++;
+        return;
       }
+
+      setNativeValue(el, value);
+      filledCount++;
     }
 
-    return {
-      filledCount,
-      unfilledNames: uniqueNames(unfilledNames),
-    };
+    for (const { el, fieldKey, displayName } of detectedFields) {
+      const value = resolveValue(fieldKey, profile, el);
+      if (value === undefined || value === null || value === "") {
+        if (isElementEmpty(el)) unfilledNames.push(displayName || fieldKey);
+        continue;
+      }
+
+      if (el.type === "radio") {
+        const groupKey = el.name || el.id;
+        if (groupKey && handledRadioGroups.has(groupKey)) continue;
+        if (groupKey) handledRadioGroups.add(groupKey);
+
+        const currentValue = getCurrentFieldValue(el);
+        const fillStep = { el, fieldKey, displayName, value };
+
+        if (currentValue && !areValuesEquivalent(currentValue, value)) {
+          conflicts.push({
+            ...fillStep,
+            currentValue,
+            nextValue: value,
+          });
+        } else if (!currentValue) {
+          runFill(fillStep);
+        }
+        continue;
+      }
+
+      const currentValue = (el.value || "").toString().trim();
+      const fillStep = { el, fieldKey, displayName, value };
+
+      if (currentValue) {
+        if (!areValuesEquivalent(currentValue, value)) {
+          conflicts.push({
+            ...fillStep,
+            currentValue,
+            nextValue: value,
+          });
+        }
+        continue;
+      }
+
+      runFill(fillStep);
+    }
+
+    function finish() {
+      callback({
+        cancelled: false,
+        filledCount,
+        unfilledNames: uniqueNames(unfilledNames),
+      });
+    }
+
+    if (conflicts.length === 0) {
+      finish();
+      return;
+    }
+
+    showConflictResolver(
+      conflicts,
+      (decisions) => {
+        decisions.forEach((decision, index) => {
+          if (decision !== "overwrite") return;
+          runFill(conflicts[index]);
+        });
+        finish();
+      },
+      () => {
+        callback({
+          cancelled: true,
+          filledCount,
+          unfilledNames: uniqueNames(unfilledNames),
+        });
+      }
+    );
   }
 
   function removeOverlay() {
@@ -542,17 +708,23 @@
         const profile = profiles.find((p) => p.id === btn.dataset.id);
         removeOverlay();
         if (profile) {
-          const result = applyProfile(detectedFields, profile);
-          const unmatchedUnfilled = unmatchedFields
-            .filter(({ el }) => isElementEmpty(el))
-            .map(({ displayName }) => displayName);
-          const allUnfilled = uniqueNames([...result.unfilledNames, ...unmatchedUnfilled]);
+          applyProfileWithConflictResolution(detectedFields, profile, (result) => {
+            if (result.cancelled) {
+              showMessage("Autofill cancelled.");
+              return;
+            }
 
-          if (allUnfilled.length > 0) {
-            showUnfilledReport(result.filledCount, allUnfilled);
-          } else if (result.filledCount === 0) {
-            showMessage("No matching fields could be filled for this profile.");
-          }
+            const unmatchedUnfilled = unmatchedFields
+              .filter(({ el }) => isElementEmpty(el))
+              .map(({ displayName }) => displayName);
+            const allUnfilled = uniqueNames([...result.unfilledNames, ...unmatchedUnfilled]);
+
+            if (allUnfilled.length > 0) {
+              showUnfilledReport(result.filledCount, allUnfilled);
+            } else if (result.filledCount === 0) {
+              showMessage("No matching fields could be filled for this profile.");
+            }
+          });
         }
       });
     });

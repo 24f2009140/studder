@@ -22,6 +22,11 @@
   box-sizing: border-box;
 }
 
+.studder-panel-wide {
+  max-width: 760px;
+  width: min(90vw, 760px);
+}
+
 .studder-title {
   margin: 0 0 12px 0;
   font-size: 14px;
@@ -88,4 +93,71 @@
 
 .studder-btn-secondary {
   width: 100%;
+}
+
+.studder-conflict-list {
+  list-style: none;
+  margin: 0 0 12px 0;
+  padding: 0;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.studder-conflict-item {
+  border: 1px solid #cccccc;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.studder-conflict-name {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.studder-conflict-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.studder-conflict-col {
+  border: 1px solid #e1e1e1;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.studder-conflict-col-title {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  color: #444444;
+  font-weight: 600;
+}
+
+.studder-conflict-value {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.studder-choice-label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.studder-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.studder-actions-row .studder-btn {
+  flex: 1;
+}
+
+@media (max-width: 680px) {
+  .studder-conflict-compare {
+    grid-template-columns: 1fr;
+  }
 }
