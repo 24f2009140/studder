@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Studder</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="ui-body popup-body">
+    <header class="ui-header">
+      <h1 class="ui-h1">Studder</h1>
+      <p class="ui-muted">No more stuttering through forms.</p>
+    </header>
+
+    <main>
+      <p id="profile-count" class="ui-muted">Loading profiles...</p>
+
+      <button id="fill-btn" type="button" class="ui-btn ui-btn-primary">
+        Fill current page (Ctrl+Shift+F)
+      </button>
+
+      <ul id="profile-list" class="ui-list"></ul>
+
+      <button id="manage-btn" type="button" class="ui-btn">
+        Add / edit profiles
+      </button>
+    </main>
+  </body>
+  <script src="storage.js"></script>
+  <script src="popup.js"></script>
+</html>

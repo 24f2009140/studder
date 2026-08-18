@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Studder",
+  "version": "1.1.0",
+  "description": "No more stuttering through forms. Fill them from profiles saved right in your browser, nothing leaves your device.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Studder"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "trigger-autofill": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Open profile selector and autofill the current form"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["storage.js", "content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

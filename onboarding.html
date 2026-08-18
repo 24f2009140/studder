@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Welcome to Studder</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="ui-body">
+    <div class="ui-container">
+      <header class="ui-header">
+        <h1 class="ui-h1">Welcome to Studder</h1>
+        <p class="ui-muted">No more stuttering through forms.</p>
+        <p class="ui-muted">
+          Create your first profile below. Everything is stored locally in
+          this browser. You can add more profiles later from the extension
+          popup.
+        </p>
+      </header>
+
+      <section class="ui-section" id="form-section">
+        <h2 class="ui-h2">Create your first profile</h2>
+        <form id="onboarding-form">
+          <div class="ui-grid-2">
+            <div class="ui-form-row">
+              <label class="ui-label" for="firstName">First name <span class="ui-required">*</span></label>
+              <input class="ui-input" type="text" id="firstName" name="firstName" required />
+            </div>
+            <div class="ui-form-row">
+              <label class="ui-label" for="lastName">Last name <span class="ui-required">*</span></label>
+              <input class="ui-input" type="text" id="lastName" name="lastName" required />
+            </div>
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="fullName">Full name</label>
+            <input class="ui-input" type="text" id="fullName" name="fullName" />
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="gender">Gender</label>
+            <select class="ui-input" id="gender" name="gender">
+              <option value="">Prefer not to say</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div class="ui-grid-2">
+            <div class="ui-form-row">
+              <label class="ui-label" for="email">Email <span class="ui-required">*</span></label>
+              <input class="ui-input" type="email" id="email" name="email" required />
+            </div>
+            <div class="ui-form-row">
+              <label class="ui-label" for="alternateEmail">Alternate email</label>
+              <input class="ui-input" type="email" id="alternateEmail" name="alternateEmail" />
+            </div>
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="phone">Phone number</label>
+            <div class="ui-inline-group">
+              <select class="ui-input" id="phoneCountry" name="phoneCountry"></select>
+              <input class="ui-input" type="tel" id="phone" name="phone" placeholder="Phone number" />
+            </div>
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="alternatePhone">Alternate phone number</label>
+            <input class="ui-input" type="tel" id="alternatePhone" name="alternatePhone" />
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label">Date of birth</label>
+            <div class="ui-inline-group">
+              <input class="ui-input" type="text" id="dobDay" placeholder="DD" maxlength="2" inputmode="numeric" />
+              <input class="ui-input" type="text" id="dobMonth" placeholder="MM" maxlength="2" inputmode="numeric" />
+              <input class="ui-input" type="text" id="dobYear" placeholder="YYYY" maxlength="4" inputmode="numeric" />
+            </div>
+            <p class="ui-hint">Please enter in day-month-year format.</p>
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="doorNumber">Door / house / building number</label>
+            <input class="ui-input" type="text" id="doorNumber" name="doorNumber" />
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="area">Area / locality / street</label>
+            <input class="ui-input" type="text" id="area" name="area" />
+          </div>
+
+          <div class="ui-form-row">
+            <label class="ui-label" for="landmark">Landmark</label>
+            <input class="ui-input" type="text" id="landmark" name="landmark" />
+          </div>
+
+          <div class="ui-grid-2">
+            <div class="ui-form-row">
+              <label class="ui-label" for="city">City</label>
+              <input class="ui-input" type="text" id="city" name="city" />
+            </div>
+            <div class="ui-form-row">
+              <label class="ui-label" for="state">State</label>
+              <input class="ui-input" type="text" id="state" name="state" />
+            </div>
+          </div>
+
+          <div class="ui-grid-2">
+            <div class="ui-form-row">
+              <label class="ui-label" for="country">Country</label>
+              <input class="ui-input" type="text" id="country" name="country" />
+            </div>
+            <div class="ui-form-row">
+              <label class="ui-label" for="zip">ZIP / PIN code</label>
+              <input class="ui-input" type="text" id="zip" name="zip" />
+            </div>
+          </div>
+
+          <button type="submit" class="ui-btn ui-btn-primary">Save profile</button>
+        </form>
+      </section>
+
+      <section class="ui-section" id="done-section" style="display:none;">
+        <p><strong>Profile saved.</strong></p>
+        <p class="ui-muted">
+          Browse to any site with a form and press <strong>Ctrl+Shift+F</strong>
+          to autofill it. You can manage or add profiles any time from the
+          extension icon's popup.
+        </p>
+        <button type="button" class="ui-btn" id="add-another-btn">Add another profile</button>
+        <button type="button" class="ui-btn" id="open-options-btn">Manage all profiles</button>
+      </section>
+    </div>
+  </body>
+  <script src="storage.js"></script>
+  <script src="onboarding.js"></script>
+</html>
