@@ -1,3 +1,7 @@
+* {
+  border-radius: 0 !important;
+}
+
 .studder-overlay {
   position: fixed;
   top: 0;

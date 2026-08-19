@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const fullNameInput = document.getElementById("fullName");
 
   const FIELD_IDS = [
+    "nickname",
     "firstName",
     "middleName",
     "lastName",
@@ -44,7 +45,8 @@ document.addEventListener("DOMContentLoaded", () => {
   phoneCountrySelect.value = "+91";
 
   function displayName(p) {
-    return p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile";
+    const base = p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile";
+    return p.nickname ? `${base} (${p.nickname})` : base;
   }
 
   function pad2(value) {

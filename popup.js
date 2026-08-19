@@ -17,7 +17,8 @@ document.addEventListener("DOMContentLoaded", () => {
     listEl.innerHTML = "";
     profiles.forEach((p) => {
       const li = document.createElement("li");
-      li.textContent = p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile";
+      const base = p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile";
+      li.textContent = p.nickname ? `${base} (${p.nickname})` : base;
       listEl.appendChild(li);
     });
   }

@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const fullNameInput = document.getElementById("fullName");
 
   const FIELD_IDS = [
+    "nickname",
     "firstName",
     "middleName",
     "lastName",

@@ -16,8 +16,8 @@
     { key: "phone", label: "Phone" },
     { key: "alternatePhone", label: "Alternate phone" },
     { key: "dateOfBirth", label: "Date of birth" },
-    { key: "doorNumber", label: "Door / house number" },
-    { key: "area", label: "Area / street" },
+    { key: "doorNumber", label: "Address Line 1" },
+    { key: "area", label: "Address Line 2" },
     { key: "landmark", label: "Landmark" },
     { key: "city", label: "City" },
     { key: "state", label: "State" },
@@ -30,7 +30,7 @@
 
   const AUTOCOMPLETE_MAP = {
     "given-name": "firstName",
-    "additional-name": "firstName",
+    "additional-name": "middleName",
     "family-name": "lastName",
     name: "fullName",
     email: "email",
@@ -129,6 +129,13 @@
     { field: "state", patterns: ["state", "province", "region"] },
     { field: "country", patterns: ["country", "nation"] },
     { field: "address", patterns: ["address", "street", "addr"] },
+    {
+      field: "company",
+      patterns: [
+        "company", "organization", "organisation", "employer", "business",
+        "school", "university", "org", "institution", "workplace"
+      ]
+    },
     { field: "fullName", patterns: ["fullname", "full-name", "full_name", "yourname", "name"] },
   ];
 
@@ -254,7 +261,16 @@
     return normalizeForMatch(best);
   }
 
-  function areValuesEquivalent(a, b) {
+  function areValuesEquivalent(a, b, el) {
+    if (el && el.tagName === "SELECT") {
+      const option = el.options[el.selectedIndex];
+      if (option) {
+        const optVal = normalize(option.value);
+        const optText = normalize(option.textContent);
+        const target = normalize(b);
+        return optVal === target || optText === target || optText.includes(target);
+      }
+    }
     const left = normalize((a || "").toString().replace(/\s+/g, " "));
     const right = normalize((b || "").toString().replace(/\s+/g, " "));
     return left === right;
@@ -274,7 +290,7 @@
     if (el.tagName === "SELECT") {
       const option = el.options[el.selectedIndex];
       if (!option) return "";
-      return option.textContent || option.value || "";
+      return (option.textContent || option.value || "").trim();
     }
 
     return (el.value || "").toString();
@@ -300,6 +316,28 @@
 
     if (el.type === "checkbox") {
       return !el.checked;
+    }
+
+    if (el.tagName === "SELECT") {
+      if (el.selectedIndex < 0) return true;
+      const option = el.options[el.selectedIndex];
+      if (!option) return true;
+      const val = (option.value || "").trim();
+      const text = (option.textContent || "").trim();
+      if (!val) return true;
+      if (el.selectedIndex === 0) {
+        const normText = text.toLowerCase();
+        if (
+          normText.includes("select") ||
+          normText.includes("choose") ||
+          normText.includes("placeholder") ||
+          normText.includes("none") ||
+          normText.includes("--")
+        ) {
+          return true;
+        }
+      }
+      return false;
     }
 
     return !((el.value || "").toString().trim());
@@ -459,6 +497,13 @@
     );
     if (addressFields.length === 1) {
       addressFields[0].fieldKey = "address";
+    }
+
+    const nameFields = detected.filter(
+      (f) => ["firstName", "lastName", "fullName"].includes(f.fieldKey)
+    );
+    if (nameFields.length === 1) {
+      nameFields[0].fieldKey = "fullName";
     }
 
     return { detected, unmatched };
@@ -795,7 +840,7 @@
         const currentValue = getCurrentFieldValue(el);
         const fillStep = { el, fieldKey, displayName, value };
 
-        if (currentValue && !areValuesEquivalent(currentValue, value)) {
+        if (currentValue && !areValuesEquivalent(currentValue, value, el)) {
           conflicts.push({
             ...fillStep,
             currentValue,
@@ -807,11 +852,11 @@
         continue;
       }
 
-      const currentValue = (el.value || "").toString().trim();
+      const currentValue = getCurrentFieldValue(el);
       const fillStep = { el, fieldKey, displayName, value };
 
-      if (currentValue) {
-        if (!areValuesEquivalent(currentValue, value)) {
+      if (currentValue && !isElementEmpty(el)) {
+        if (!areValuesEquivalent(currentValue, value, el)) {
           conflicts.push({
             ...fillStep,
             currentValue,
@@ -946,10 +991,13 @@
 
     const listItems = profiles
       .map(
-        (p) =>
-          `<li><button type="button" class="studder-profile-btn" data-id="${p.id}">${escapeHtml(
-            p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile"
-          )}</button></li>`
+        (p) => {
+          const base = p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed profile";
+          const displayName = p.nickname ? `${base} (${p.nickname})` : base;
+          return `<li><button type="button" class="studder-profile-btn" data-id="${p.id}">${escapeHtml(
+            displayName
+          )}</button></li>`;
+        }
       )
       .join("");
 
