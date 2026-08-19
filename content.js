@@ -704,13 +704,13 @@
 
   function resolveDob(profile, el) {
     const parts = parseDobParts(profile.dateOfBirth);
-    if (!parts) return "";
+    if (!parts) return profile.dateOfBirth || "";
 
     const signature = buildSignature(el);
-    const placeholder = normalize(el.getAttribute("placeholder"));
+    const placeholder = normalize(el ? el.getAttribute("placeholder") : "");
     const patternHint = `${signature} ${placeholder}`;
 
-    if (el.type === "date") return `${parts.yyyy}-${parts.mm}-${parts.dd}`;
+    if (el && el.type === "date") return `${parts.yyyy}-${parts.mm}-${parts.dd}`;
 
     if (patternHint.includes("birth day") || /\bday\b/.test(patternHint) || patternHint.includes("dob day")) {
       return parts.dd;
@@ -722,24 +722,55 @@
       return parts.yyyy;
     }
 
-    // Detect delimiter from hint/placeholder or maxlength
-    let delimiter = "";
-    if (patternHint.includes("/")) delimiter = "/";
-    else if (patternHint.includes("-")) delimiter = "-";
-    else if (patternHint.includes(".")) delimiter = ".";
-    else if (el && (el.maxLength === 10 || el.getAttribute("maxlength") === "10")) {
-      delimiter = "/";
+    // 1. Explicit MMDDYYYY (no delimiters)
+    if (patternHint.includes("mmddyyyy")) {
+      return `${parts.mm}${parts.dd}${parts.yyyy}`;
+    }
+    // 2. Explicit DDMMYYYY (no delimiters)
+    if (patternHint.includes("ddmmyyyy")) {
+      return `${parts.dd}${parts.mm}${parts.yyyy}`;
+    }
+    // 3. Explicit YYYYMMDD (no delimiters)
+    if (patternHint.includes("yyyymmdd")) {
+      return `${parts.yyyy}${parts.mm}${parts.dd}`;
     }
 
-    // Determine component order
-    if (/yyyy.*mm.*dd/.test(patternHint)) {
-      return [parts.yyyy, parts.mm, parts.dd].join(delimiter);
-    }
-    if (/mm.*dd.*yyyy/.test(patternHint)) {
-      return [parts.mm, parts.dd, parts.yyyy].join(delimiter);
+    // 4. Explicit MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY
+    if (patternHint.includes("mm/dd/yyyy") || patternHint.includes("mm-dd-yyyy") || patternHint.includes("mm.dd.yyyy")) {
+      const sep = patternHint.includes("/") ? "/" : patternHint.includes("-") ? "-" : ".";
+      return `${parts.mm}${sep}${parts.dd}${sep}${parts.yyyy}`;
     }
 
-    return [parts.dd, parts.mm, parts.yyyy].join(delimiter);
+    // 5. Explicit YYYY/MM/DD or YYYY-MM-DD or YYYY.MM.DD
+    if (patternHint.includes("yyyy/mm/dd") || patternHint.includes("yyyy-mm-dd") || patternHint.includes("yyyy.mm.dd")) {
+      const sep = patternHint.includes("/") ? "/" : patternHint.includes("-") ? "-" : ".";
+      return `${parts.yyyy}${sep}${parts.mm}${sep}${parts.dd}`;
+    }
+
+    // 6. Explicit DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    if (patternHint.includes("dd/mm/yyyy") || patternHint.includes("dd-mm-yyyy") || patternHint.includes("dd.mm.yyyy")) {
+      const sep = patternHint.includes("/") ? "/" : patternHint.includes("-") ? "-" : ".";
+      return `${parts.dd}${sep}${parts.mm}${sep}${parts.yyyy}`;
+    }
+
+    // 7. Check if placeholder or signature has a delimiter character
+    if (patternHint.includes("-")) {
+      return `${parts.dd}-${parts.mm}-${parts.yyyy}`;
+    }
+    if (patternHint.includes(".")) {
+      return `${parts.dd}.${parts.mm}.${parts.yyyy}`;
+    }
+    if (patternHint.includes("/")) {
+      return `${parts.dd}/${parts.mm}/${parts.yyyy}`;
+    }
+
+    // 8. If field has maxlength 8, return DDMMYYYY without slashes
+    if (el && (el.maxLength === 8 || el.getAttribute("maxlength") === "8")) {
+      return `${parts.dd}${parts.mm}${parts.yyyy}`;
+    }
+
+    // Default: Return the profile's saved DOB directly (DD/MM/YYYY)
+    return profile.dateOfBirth || `${parts.dd}/${parts.mm}/${parts.yyyy}`;
   }
 
   function buildFullAddress(profile) {
