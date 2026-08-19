@@ -1125,6 +1125,11 @@
     const total = filledCount + uniqueUnfilled.length;
     const percent = total > 0 ? Math.round((filledCount / total) * 100) : 0;
 
+    const unfilledSection = uniqueUnfilled.length > 0 ? `
+      <p class="studder-section-title" style="font-size: 13px; font-weight: 600; margin: 12px 0 6px 0;">Unfilled Fields</p>
+      <ul class="studder-unfilled-list" style="margin-left: 0; padding-left: 16px; list-style-type: disc;">${listItems}</ul>
+    ` : "";
+
     const root = document.createElement("div");
     root.id = OVERLAY_ID;
     root.className = "studder-overlay";
@@ -1144,8 +1149,11 @@
           Filled: <strong>${filledCount}</strong> | Unfilled: <strong>${uniqueUnfilled.length}</strong>
         </p>
 
-        <p class="studder-section-title" style="font-size: 13px; font-weight: 600; margin: 12px 0 6px 0;">Unfilled Fields</p>
-        <ul class="studder-unfilled-list" style="margin-left: 0; padding-left: 16px; list-style-type: disc;">${listItems}</ul>
+        ${unfilledSection}
+
+        <div style="background-color: #d9534f; color: #ffffff; padding: 8px 10px; font-size: 11px; text-align: center; margin: 12px 0 10px 0; font-weight: 500; line-height: 1.4;">
+          Please double check your details as fill can sometimes not work.
+        </div>
         
         <button type="button" class="studder-btn studder-btn-secondary" data-action="close">Close</button>
       </div>
@@ -1208,9 +1216,9 @@
               .map(({ el, displayName }) => ({ el, displayName, fieldKey: null }));
             const allUnfilled = uniqueUnfilledEntries([...result.unfilledEntries, ...unmatchedUnfilled]);
 
-            if (allUnfilled.length > 0) {
+            if (result.filledCount > 0 || allUnfilled.length > 0) {
               showUnfilledReport(result.filledCount, allUnfilled, profile);
-            } else if (result.filledCount === 0) {
+            } else {
               showMessage("No matching fields could be filled for this profile.");
             }
           });
