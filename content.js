@@ -1151,8 +1151,8 @@
 
         ${unfilledSection}
 
-        <div style="background-color: #d9534f; color: #ffffff; padding: 8px 10px; font-size: 11px; text-align: center; margin: 12px 0 10px 0; font-weight: 500; line-height: 1.4;">
-          Please double check your details as fill can sometimes not work.
+        <div style="background-color: #d9534f; color: #ffffff; padding: 8px 10px; font-size: 11px; text-align: center; margin: 12px 0 10px 0; font-weight: 600; line-height: 1.4; letter-spacing: 0.5px;">
+          PLEASE VERIFY YOUR DETAILS BEFORE SUBMITTING
         </div>
         
         <button type="button" class="studder-btn studder-btn-secondary" data-action="close">Close</button>
