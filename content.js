@@ -235,6 +235,7 @@
     const result = [];
     for (const entry of entries) {
       if (!entry || !entry.displayName) continue;
+      if (entry.displayName.toLowerCase().includes("unknown field")) continue;
       const key = normalize(entry.displayName);
       if (seen.has(key)) continue;
       seen.add(key);
@@ -271,6 +272,29 @@
         return optVal === target || optText === target || optText.includes(target);
       }
     }
+    if (el && el.type === "radio") {
+      const radios = el.name && el.form
+        ? Array.from(el.form.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`))
+        : [el];
+      const checked = radios.find((r) => r.checked);
+      if (checked) {
+        const optVal = normalize(checked.value);
+        const optText = normalize(getAssociatedLabelText(checked));
+        const target = normalize(b);
+        const targetGender = normalizeGender(target);
+        return (
+          optVal === target ||
+          optText === target ||
+          optText.includes(target) ||
+          normalizeGender(optVal) === targetGender ||
+          normalizeGender(optText) === targetGender
+        );
+      }
+    }
+    if (el && el.type === "checkbox") {
+      const isTargetTrue = ["true", "yes", "checked", "1", "on"].includes(normalize(b));
+      return el.checked === isTargetTrue;
+    }
     const left = normalize((a || "").toString().replace(/\s+/g, " "));
     const right = normalize((b || "").toString().replace(/\s+/g, " "));
     return left === right;
@@ -280,11 +304,17 @@
     if (!el) return "";
 
     if (el.type === "radio") {
-      if (!el.form || !el.name) return el.checked ? (el.value || "") : "";
+      if (!el.form || !el.name) {
+        return el.checked ? (getAssociatedLabelText(el) || el.value || "") : "";
+      }
       const radios = Array.from(el.form.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`));
       const checked = radios.find((radio) => radio.checked);
       if (!checked) return "";
-      return checked.value || getAssociatedLabelText(checked) || "";
+      return getAssociatedLabelText(checked) || checked.value || "";
+    }
+
+    if (el.type === "checkbox") {
+      return el.checked ? "Checked" : "Unchecked";
     }
 
     if (el.tagName === "SELECT") {
@@ -504,6 +534,12 @@
     );
     if (nameFields.length === 1) {
       nameFields[0].fieldKey = "fullName";
+    }
+
+    const phoneFields = detected.filter((f) => f.fieldKey === "phone");
+    if (phoneFields.length > 1) {
+      phoneFields[1].fieldKey = "alternatePhone";
+      phoneFields[1].displayName = getFieldDisplayName(phoneFields[1].el, "alternatePhone");
     }
 
     return { detected, unmatched };
@@ -818,6 +854,17 @@
         } else if (isElementEmpty(el)) {
           pushUnfilledEntry(el, displayName, fieldKey);
         }
+        return;
+      }
+
+      if (el.type === "checkbox") {
+        const targetState = ["true", "yes", "checked", "1", "on"].includes(normalize(value));
+        if (el.checked !== targetState) {
+          el.checked = targetState;
+          el.dispatchEvent(new Event("click", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        filledCount++;
         return;
       }
 
