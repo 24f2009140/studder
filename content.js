@@ -712,31 +712,34 @@
 
     if (el.type === "date") return `${parts.yyyy}-${parts.mm}-${parts.dd}`;
 
-    if (patternHint.includes("mmddyyyy") || patternHint.includes("mm/dd/yyyy") || patternHint.includes("mm-dd-yyyy")) {
-      return `${parts.mm}${parts.dd}${parts.yyyy}`;
-    }
-
-    if (patternHint.includes("yyyymmdd") || patternHint.includes("yyyy/mm/dd") || patternHint.includes("yyyy-mm-dd")) {
-      return `${parts.yyyy}${parts.mm}${parts.dd}`;
-    }
-
-    if (patternHint.includes("ddmmyyyy") || patternHint.includes("dd/mm/yyyy") || patternHint.includes("dd-mm-yyyy")) {
-      return `${parts.dd}${parts.mm}${parts.yyyy}`;
-    }
-
     if (patternHint.includes("birth day") || /\bday\b/.test(patternHint) || patternHint.includes("dob day")) {
       return parts.dd;
     }
-
     if (patternHint.includes("birth month") || /\bmonth\b/.test(patternHint) || patternHint.includes("dob month")) {
       return parts.mm;
     }
-
     if (patternHint.includes("birth year") || /\byear\b/.test(patternHint) || patternHint.includes("dob year")) {
       return parts.yyyy;
     }
 
-    return `${parts.dd}${parts.mm}${parts.yyyy}`;
+    // Detect delimiter from hint/placeholder or maxlength
+    let delimiter = "";
+    if (patternHint.includes("/")) delimiter = "/";
+    else if (patternHint.includes("-")) delimiter = "-";
+    else if (patternHint.includes(".")) delimiter = ".";
+    else if (el && (el.maxLength === 10 || el.getAttribute("maxlength") === "10")) {
+      delimiter = "/";
+    }
+
+    // Determine component order
+    if (/yyyy.*mm.*dd/.test(patternHint)) {
+      return [parts.yyyy, parts.mm, parts.dd].join(delimiter);
+    }
+    if (/mm.*dd.*yyyy/.test(patternHint)) {
+      return [parts.mm, parts.dd, parts.yyyy].join(delimiter);
+    }
+
+    return [parts.dd, parts.mm, parts.yyyy].join(delimiter);
   }
 
   function buildFullAddress(profile) {
