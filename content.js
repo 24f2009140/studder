@@ -103,7 +103,7 @@
     { field: "middleName", patterns: ["mname", "middle_name", "middle-name", "middlename", "middle name"] },
     { field: "lastName", patterns: ["lname", "last_name", "last-name", "lastname", "familyname", "family-name", "surname"] },
     { field: "email", patterns: ["email", "e-mail"] },
-    { field: "phone", patterns: ["phone", "telephone", "mobile", "cell", "contact-number", "contactnumber", "first phone", "phone 1", "first number", "phone1", "mobile1", "mobile 1"] },
+    { field: "phone", patterns: ["phone", "telephone", "mobile", "cell", "contact-number", "contactnumber", "first phone", "phone 1", "first number", "phone1", "mobile1", "mobile 1", "tel", "tel-no", "telno", "tel_no", "contact-no", "contactno", "contact_no", "contact-num", "contactnum", "contact_num"] },
     {
       field: "dateOfBirth",
       patterns: [
@@ -128,7 +128,7 @@
     { field: "zip", patterns: ["zip", "pin", "postal", "postcode", "post-code", "pincode"] },
     { field: "city", patterns: ["city", "town"] },
     { field: "state", patterns: ["state", "province", "region"] },
-    { field: "country", patterns: ["country", "nation"] },
+    { field: "country", patterns: ["country", "nation", "nationality", "citizenship"] },
     { field: "address", patterns: ["address", "street", "addr"] },
     {
       field: "company",
@@ -571,12 +571,94 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  function fillSelect(el, value) {
-    const options = Array.from(el.options);
+  // Country->Nationality irregular lookup for cases where substring stem won't work
+  const NATIONALITY_IRREGULAR = {
+    "france": "french", "french guiana": "french",
+    "netherlands": "dutch", "holland": "dutch",
+    "spain": "spanish",
+    "china": "chinese",
+    "japan": "japanese",
+    "portugal": "portuguese",
+    "switzerland": "swiss",
+    "new zealand": "new zealander",
+    "united states": "american", "usa": "american", "us": "american",
+    "united kingdom": "british", "uk": "british", "great britain": "british",
+    "ireland": "irish",
+    "denmark": "danish",
+    "finland": "finnish",
+    "sweden": "swedish",
+    "norway": "norwegian",
+    "poland": "polish",
+    "turkey": "turkish",
+    "saudi arabia": "saudi",
+    "czech republic": "czech",
+    "south africa": "south african",
+    "thailand": "thai",
+    "philippines": "filipino",
+    "kuwait": "kuwaiti",
+    "qatar": "qatari",
+    "uae": "emirati", "united arab emirates": "emirati",
+  };
+
+  function getNationalityFromCountry(countryValue) {
+    const lower = normalize(countryValue);
+    // 1. Exact irregular lookup
+    if (NATIONALITY_IRREGULAR[lower]) return NATIONALITY_IRREGULAR[lower];
+    // 2. Partial lookup (country name contains a key)
+    for (const [key, nat] of Object.entries(NATIONALITY_IRREGULAR)) {
+      if (lower.includes(key) || key.includes(lower)) return nat;
+    }
+    return null; // fallback: use stem/substring in fillSelect
+  }
+
+  function fillSelect(el, value, fieldKey) {
+    const opts = Array.from(el.options);
     const target = normalize(value);
-    const match = options.find(
-      (o) => normalize(o.value) === target || normalize(o.textContent) === target || normalize(o.textContent).includes(target)
-    );
+    const isNationality = (fieldKey === "country") && (() => {
+      const sig = normalize(buildSignature(el));
+      return sig.includes("national") || sig.includes("citizen");
+    })();
+
+    let match;
+
+    if (isNationality) {
+      // Try to resolve nationality from country name
+      const nationality = getNationalityFromCountry(value);
+      const stem = target.length >= 4 ? target.slice(0, 4) : target;
+
+      match = opts.find((o) => {
+        const ot = normalize(o.textContent);
+        const ov = normalize(o.value);
+        // 1. Exact irregular match
+        if (nationality && (ot === nationality || ov === nationality)) return true;
+        // 2. Option contains country name (India -> Indian)
+        if (ot.includes(target) || ov.includes(target)) return true;
+        // 3. Stem: first 4 chars of country match start of option (China -> Chinese)
+        if (stem && (ot.startsWith(stem) || ov.startsWith(stem))) return true;
+        return false;
+      });
+    }
+
+    if (!match) {
+      // Standard matching
+      match = opts.find(
+        (o) =>
+          normalize(o.value) === target ||
+          normalize(o.textContent) === target ||
+          normalize(o.textContent).includes(target)
+      );
+    }
+
+    // Gender fallback: try normalizing M/F/man/woman
+    if (!match && (fieldKey === "gender")) {
+      const genderNorm = normalizeGender(value);
+      match = opts.find((o) => {
+        const ot = normalize(o.textContent);
+        const ov = normalize(o.value);
+        return normalizeGender(ot) === genderNorm || normalizeGender(ov) === genderNorm;
+      });
+    }
+
     if (match) {
       el.value = match.value;
       el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -863,7 +945,7 @@
       }
 
       if (el.tagName === "SELECT") {
-        if (fillSelect(el, value)) {
+        if (fillSelect(el, value, fieldKey)) {
           filledCount++;
         } else if (isElementEmpty(el)) {
           pushUnfilledEntry(el, displayName, fieldKey);

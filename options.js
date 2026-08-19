@@ -119,8 +119,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const header = document.createElement("div");
       header.className = "ui-card-header";
 
+      // Export checkbox
+      const checkboxWrap = document.createElement("label");
+      checkboxWrap.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;margin-right:8px;";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "profile-export-checkbox";
+      checkbox.dataset.id = p.id;
+      checkbox.title = "Select for export";
+      checkboxWrap.appendChild(checkbox);
+
       const title = document.createElement("p");
       title.className = "ui-card-title";
+      title.style.flex = "1";
       title.textContent = displayName(p);
 
       const actions = document.createElement("div");
@@ -144,6 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       actions.appendChild(editBtn);
       actions.appendChild(deleteBtn);
+      header.appendChild(checkboxWrap);
       header.appendChild(title);
       header.appendChild(actions);
 
@@ -220,6 +232,109 @@ document.addEventListener("DOMContentLoaded", () => {
 
   cancelEditBtn.addEventListener("click", resetForm);
 
+  // ---- IMPORT PICKER HELPER ----
+  function showImportPicker(importedProfiles) {
+    // Build a simple modal overlay within the page
+    const existing = document.getElementById("studder-import-picker");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "studder-import-picker";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";
+
+    const panel = document.createElement("div");
+    panel.style.cssText = "background:var(--ui-bg,#fff);padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,.25);";
+
+    const title = document.createElement("p");
+    title.style.cssText = "font-weight:700;font-size:16px;margin:0 0 12px;";
+    title.textContent = `Found ${importedProfiles.length} profile(s) in backup`;
+    panel.appendChild(title);
+
+    const hint = document.createElement("p");
+    hint.style.cssText = "font-size:13px;color:#888;margin:0 0 16px;";
+    hint.textContent = "Check the profiles you want to import, then choose an action.";
+    panel.appendChild(hint);
+
+    const profileName = (p) => {
+      const base = p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") || "Unnamed";
+      return p.nickname ? `${base} (${p.nickname})` : base;
+    };
+
+    const checkboxes = [];
+    importedProfiles.forEach((p, idx) => {
+      const row = document.createElement("label");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;cursor:pointer;";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.dataset.idx = idx;
+      checkboxes.push(cb);
+      const nameSpan = document.createElement("span");
+      nameSpan.style.cssText = "font-size:14px;";
+      nameSpan.textContent = profileName(p);
+      const detailSpan = document.createElement("span");
+      detailSpan.style.cssText = "font-size:12px;color:#888;margin-left:auto;";
+      detailSpan.textContent = [p.email, p.city].filter(Boolean).join(" · ");
+      row.appendChild(cb);
+      row.appendChild(nameSpan);
+      row.appendChild(detailSpan);
+      panel.appendChild(row);
+    });
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;";
+
+    const loadBtn = document.createElement("button");
+    loadBtn.className = "ui-btn ui-btn-primary";
+    loadBtn.style.cssText = "margin:0;";
+    loadBtn.textContent = "Load Selected into Form";
+    loadBtn.addEventListener("click", () => {
+      const selected = importedProfiles.filter((_, idx) => checkboxes[idx].checked);
+      if (selected.length === 0) { alert("Please select at least one profile."); return; }
+      overlay.remove();
+      loadIntoForm(selected[0]); // Load first selected into form for review
+      if (selected.length > 1) alert(`Loaded "${profileName(selected[0])}" into the form. Save it, then repeat for the remaining ${selected.length - 1} profile(s).`);
+    });
+
+    const importAllBtn = document.createElement("button");
+    importAllBtn.className = "ui-btn";
+    importAllBtn.style.cssText = "margin:0;";
+    importAllBtn.textContent = "Import All Selected";
+    importAllBtn.addEventListener("click", () => {
+      const selected = importedProfiles.filter((_, idx) => checkboxes[idx].checked);
+      if (selected.length === 0) { alert("Please select at least one profile."); return; }
+      window.StudderStorage.getProfiles((existing) => {
+        let added = 0, updated = 0;
+        const list = [...existing];
+        selected.forEach((p) => {
+          const matchIdx = p.id ? list.findIndex((x) => x.id === p.id) : -1;
+          if (matchIdx > -1) { list[matchIdx] = Object.assign({}, list[matchIdx], p); updated++; }
+          else { list.push(Object.assign({ id: "p_" + Date.now() + "_" + Math.random().toString(36).slice(2,8) }, p)); added++; }
+        });
+        window.StudderStorage.saveProfiles(list, () => {
+          overlay.remove();
+          alert(`Done! Added ${added}, updated ${updated} profile(s).`);
+          refresh();
+        });
+      });
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "ui-btn";
+    cancelBtn.style.cssText = "margin:0;";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => overlay.remove());
+
+    btnRow.appendChild(loadBtn);
+    btnRow.appendChild(importAllBtn);
+    btnRow.appendChild(cancelBtn);
+    panel.appendChild(btnRow);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+
+  // ---- EXPORT & IMPORT BUTTONS ----
   const exportBtn = document.getElementById("export-profiles-btn");
   const importBtn = document.getElementById("import-profiles-btn");
   const importInput = document.getElementById("import-profiles-input");
@@ -227,7 +342,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (exportBtn) {
     exportBtn.addEventListener("click", () => {
       window.StudderStorage.getProfiles((profiles) => {
-        const jsonStr = JSON.stringify(profiles, null, 2);
+        const checked = Array.from(document.querySelectorAll(".profile-export-checkbox:checked")).map((cb) => cb.dataset.id);
+        const toExport = checked.length > 0 ? profiles.filter((p) => checked.includes(p.id)) : [];
+        if (toExport.length === 0) {
+          alert("Please check at least one profile to export.");
+          return;
+        }
+        const jsonStr = JSON.stringify(toExport, null, 2);
         const blob = new Blob([jsonStr], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -242,55 +363,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (importBtn && importInput) {
-    importBtn.addEventListener("click", () => {
-      importInput.click();
-    });
-
+    importBtn.addEventListener("click", () => importInput.click());
     importInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (evt) => {
         try {
           const imported = JSON.parse(evt.target.result);
-          if (!Array.isArray(imported)) {
-            alert("Invalid backup file: Must be a JSON array of profiles.");
-            return;
-          }
-
-          window.StudderStorage.getProfiles((existing) => {
-            let updatedCount = 0;
-            let addedCount = 0;
-            const updatedList = [...existing];
-
-            imported.forEach((p) => {
-              if (!p || typeof p !== "object") return;
-              
-              // Validate minimum fields
-              if (!p.firstName && !p.lastName && !p.fullName) return;
-
-              // Check if profile ID matches an existing one
-              const matchIdx = p.id ? updatedList.findIndex((x) => x.id === p.id) : -1;
-              if (matchIdx > -1) {
-                updatedList[matchIdx] = Object.assign({}, updatedList[matchIdx], p);
-                updatedCount++;
-              } else {
-                const newProfile = Object.assign(
-                  { id: "p_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) },
-                  p
-                );
-                updatedList.push(newProfile);
-                addedCount++;
-              }
-            });
-
-            window.StudderStorage.saveProfiles(updatedList, () => {
-              alert(`Import finished! Added ${addedCount} new profiles, updated ${updatedCount} existing profiles.`);
-              refresh();
-              importInput.value = ""; // clear input
-            });
-          });
+          if (!Array.isArray(imported)) { alert("Invalid backup file: Must be a JSON array of profiles."); return; }
+          const valid = imported.filter((p) => p && typeof p === "object" && (p.firstName || p.lastName || p.fullName));
+          if (valid.length === 0) { alert("No valid profiles found in backup file."); return; }
+          importInput.value = "";
+          showImportPicker(valid);
         } catch (err) {
           alert("Error parsing backup file: " + err.message);
         }
