@@ -1,4 +1,5 @@
-* {
+.studder-overlay,
+.studder-overlay * {
   border-radius: 0 !important;
 }
 
