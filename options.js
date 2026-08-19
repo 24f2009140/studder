@@ -220,5 +220,84 @@ document.addEventListener("DOMContentLoaded", () => {
 
   cancelEditBtn.addEventListener("click", resetForm);
 
+  const exportBtn = document.getElementById("export-profiles-btn");
+  const importBtn = document.getElementById("import-profiles-btn");
+  const importInput = document.getElementById("import-profiles-input");
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      window.StudderStorage.getProfiles((profiles) => {
+        const jsonStr = JSON.stringify(profiles, null, 2);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "studder_profiles_backup.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+
+  if (importBtn && importInput) {
+    importBtn.addEventListener("click", () => {
+      importInput.click();
+    });
+
+    importInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (!Array.isArray(imported)) {
+            alert("Invalid backup file: Must be a JSON array of profiles.");
+            return;
+          }
+
+          window.StudderStorage.getProfiles((existing) => {
+            let updatedCount = 0;
+            let addedCount = 0;
+            const updatedList = [...existing];
+
+            imported.forEach((p) => {
+              if (!p || typeof p !== "object") return;
+              
+              // Validate minimum fields
+              if (!p.firstName && !p.lastName && !p.fullName) return;
+
+              // Check if profile ID matches an existing one
+              const matchIdx = p.id ? updatedList.findIndex((x) => x.id === p.id) : -1;
+              if (matchIdx > -1) {
+                updatedList[matchIdx] = Object.assign({}, updatedList[matchIdx], p);
+                updatedCount++;
+              } else {
+                const newProfile = Object.assign(
+                  { id: "p_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) },
+                  p
+                );
+                updatedList.push(newProfile);
+                addedCount++;
+              }
+            });
+
+            window.StudderStorage.saveProfiles(updatedList, () => {
+              alert(`Import finished! Added ${addedCount} new profiles, updated ${updatedCount} existing profiles.`);
+              refresh();
+              importInput.value = ""; // clear input
+            });
+          });
+        } catch (err) {
+          alert("Error parsing backup file: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
   refresh();
 });

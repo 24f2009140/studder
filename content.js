@@ -87,6 +87,7 @@
         "secondary phone", "secondary-phone",
         "alternate mobile", "alt mobile", "alternate-mobile", "alt-mobile",
         "backup phone", "backup mobile",
+        "second phone", "phone 2", "second number", "secondary phone", "phone2", "mobile2", "mobile 2"
       ],
     },
     {
@@ -102,7 +103,7 @@
     { field: "middleName", patterns: ["mname", "middle_name", "middle-name", "middlename", "middle name"] },
     { field: "lastName", patterns: ["lname", "last_name", "last-name", "lastname", "familyname", "family-name", "surname"] },
     { field: "email", patterns: ["email", "e-mail"] },
-    { field: "phone", patterns: ["phone", "telephone", "mobile", "cell", "contact-number", "contactnumber"] },
+    { field: "phone", patterns: ["phone", "telephone", "mobile", "cell", "contact-number", "contactnumber", "first phone", "phone 1", "first number", "phone1", "mobile1", "mobile 1"] },
     {
       field: "dateOfBirth",
       patterns: [
@@ -134,6 +135,13 @@
       patterns: [
         "company", "organization", "organisation", "employer", "business",
         "school", "university", "org", "institution", "workplace"
+      ]
+    },
+    {
+      field: "relativeName",
+      patterns: [
+        "father", "mother", "guardian", "spouse", "parent", "husband", "wife",
+        "emergency contact", "referee", "reference", "nominee", "friend", "contact name", "contactperson"
       ]
     },
     { field: "fullName", patterns: ["fullname", "full-name", "full_name", "yourname", "name"] },
@@ -538,8 +546,14 @@
 
     const phoneFields = detected.filter((f) => f.fieldKey === "phone");
     if (phoneFields.length > 1) {
-      phoneFields[1].fieldKey = "alternatePhone";
-      phoneFields[1].displayName = getFieldDisplayName(phoneFields[1].el, "alternatePhone");
+      const nonConfirmPhoneFields = phoneFields.filter((f) => {
+        const sig = buildSignature(f.el);
+        return !sig.includes("confirm") && !sig.includes("re-enter") && !sig.includes("reenter") && !sig.includes("verify");
+      });
+      if (nonConfirmPhoneFields.length > 1) {
+        nonConfirmPhoneFields[1].fieldKey = "alternatePhone";
+        nonConfirmPhoneFields[1].displayName = getFieldDisplayName(nonConfirmPhoneFields[1].el, "alternatePhone");
+      }
     }
 
     return { detected, unmatched };
